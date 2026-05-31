@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Cold Email Infrastructure Calculator</title>
+    <style>
+      html,body,#root{margin:0;padding:0;background:#0a0e12;}
+    </style>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel" data-presets="react">
+      const { useState, useMemo } = React;
+
+      const DEFAULTS = {
+        leads: 10000,
+        emailsPerSequence: 3,
+        perMailboxPerDay: 30,
+        mailboxesPerDomain: 3,
+        targetMonths: 1,
+        weekdaysOnly: true,
+        warmupWeeks: 3,
+      };
+
+      const fmt = (n) =>
+        Number.isFinite(n) ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : "—";
+
+      function Field({ label, hint, children }) {
+        return (
+          <label style={{ display: "block", marginBottom: 18 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+              <span style={{ fontSize: 13, letterSpacing: 0.3, color: "#cdd3da", fontWeight: 600 }}>{label}</span>
+              {hint && <span style={{ fontSize: 11, color: "#7f8896" }}>{hint}</span>}
+            </div>
+            {children}
+          </label>
+        );
+      }
+
+      const inputStyle = {
+        width: "100%",
+        boxSizing: "border-box",
+        background: "#0e1419",
+        border: "1px solid #28323d",
+        borderRadius: 8,
+        color: "#f4a13b",
+        fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontSize: 18,
+        padding: "10px 12px",
+        outline: "none",
+      };
+
+      function Stat({ label, value, unit, big, accent }) {
+        return (
+          <div
+            style={{
+              background: big ? "linear-gradient(135deg,#1a2129,#11171d)" : "#11171d",
+              border: `1px solid ${accent ? "#f4a13b55" : "#28323d"}`,
+              borderRadius: 12,
+              padding: big ? "18px 20px" : "14px 16px",
+              flex: 1,
+              minWidth: big ? 160 : 130,
+            }}
+          >
+            <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "#7f8896", marginBottom: 8 }}>
+              {label}
+            </div>
+            <div
+              style={{
+                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontSize: big ? 38 : 26,
+                fontWeight: 700,
+                color: accent ? "#f4a13b" : "#eef2f6",
+                lineHeight: 1,
+              }}
+            >
+              {value}
+              {unit && <span style={{ fontSize: big ? 15 : 12, color: "#7f8896", marginLeft: 6 }}>{unit}</span>}
+            </div>
+          </div>
+        );
+      }
+
+      function ColdEmailCalculator() {
+        const [s, setS] = useState(DEFAULTS);
+        const set = (k) => (e) => {
+          const v = e.target.type === "checkbox" ? e.target.checked : Number(e.target.value);
+          setS((p) => ({ ...p, [k]: v }));
+        };
+
+        const r = useMemo(() => {
+          const totalEmails = s.leads * s.emailsPerSequence;
+          const calendarDays = s.targetMonths * 30.44;
+          const sendingDays = s.weekdaysOnly ? calendarDays * (5 / 7) : calendarDays;
+          const dailyVolume = totalEmails / sendingDays;
+          const mailboxes = Math.ceil(dailyVolume / s.perMailboxPerDay);
+          const domains = Math.ceil(mailboxes / s.mailboxesPerDomain);
+          const actualCapacity = mailboxes * s.perMailboxPerDay;
+
+          const start = 6;
+          const target = s.perMailboxPerDay;
+          const weeks = Math.max(1, s.warmupWeeks);
+          const ramp = Array.from({ length: weeks }, (_, i) => {
+            const v = Math.round(start + ((target - start) * (i + 1)) / weeks);
+            return Math.min(v, target);
+          });
+          const warmupSendPerMailbox = ramp.reduce((sum, perDay) => sum + perDay * 5, 0);
+
+          const totalSendDays = Math.ceil(sendingDays);
+          const calStart = new Date();
+          const launchDate = new Date(calStart.getTime() + weeks * 7 * 86400000);
+
+          return {
+            totalEmails, dailyVolume, mailboxes, domains, actualCapacity,
+            ramp, warmupSendPerMailbox, totalSendDays, weeks, launchDate,
+          };
+        }, [s]);
+
+        return (
+          <div
+            style={{
+              minHeight: "100vh",
+              background: "radial-gradient(1200px 600px at 80% -10%, #1c2530 0%, #0a0e12 60%)",
+              color: "#eef2f6",
+              fontFamily: "ui-sans-serif, system-ui, -apple-system, sans-serif",
+              padding: "28px 18px 60px",
+            }}
+          >
+            <div style={{ maxWidth: 760, margin: "0 auto" }}>
+              <div style={{ marginBottom: 26 }}>
+                <div style={{ fontSize: 11, letterSpacing: 3, color: "#f4a13b", textTransform: "uppercase", marginBottom: 6 }}>
+                  Conservative Mode
+                </div>
+                <h1 style={{ fontSize: 28, margin: 0, fontWeight: 800, letterSpacing: -0.5 }}>
+                  Cold Email Infrastructure Calculator
+                </h1>
+                <p style={{ color: "#8b94a0", fontSize: 14, marginTop: 8, lineHeight: 1.5 }}>
+                  Sizes your domains and mailboxes for the target window, with deliverability-safe defaults and a warmup ramp.
+                </p>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 22px" }}>
+                <Field label="Total leads">
+                  <input style={inputStyle} type="number" min={1} value={s.leads} onChange={set("leads")} />
+                </Field>
+                <Field label="Emails per sequence" hint="touches per lead">
+                  <input style={inputStyle} type="number" min={1} value={s.emailsPerSequence} onChange={set("emailsPerSequence")} />
+                </Field>
+                <Field label="Emails / mailbox / day" hint="≤30 recommended">
+                  <input style={inputStyle} type="number" min={1} value={s.perMailboxPerDay} onChange={set("perMailboxPerDay")} />
+                </Field>
+                <Field label="Mailboxes / domain" hint="3 = safe">
+                  <input style={inputStyle} type="number" min={1} value={s.mailboxesPerDomain} onChange={set("mailboxesPerDomain")} />
+                </Field>
+                <Field label="Target window" hint="months">
+                  <input style={inputStyle} type="number" min={0.25} step={0.25} value={s.targetMonths} onChange={set("targetMonths")} />
+                </Field>
+                <Field label="Warmup period" hint="weeks before launch">
+                  <input style={inputStyle} type="number" min={0} value={s.warmupWeeks} onChange={set("warmupWeeks")} />
+                </Field>
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 26px", cursor: "pointer" }}>
+                <input type="checkbox" checked={s.weekdaysOnly} onChange={set("weekdaysOnly")}
+                  style={{ width: 18, height: 18, accentColor: "#f4a13b" }} />
+                <span style={{ fontSize: 14, color: "#cdd3da" }}>Send on weekdays only (5 days/week)</span>
+              </label>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
+                <Stat big accent label="Domains needed" value={fmt(r.domains)} />
+                <Stat big accent label="Mailboxes needed" value={fmt(r.mailboxes)} />
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 26 }}>
+                <Stat label="Total emails" value={fmt(r.totalEmails)} />
+                <Stat label="Needed / day" value={fmt(Math.ceil(r.dailyVolume))} />
+                <Stat label="Actual capacity / day" value={fmt(r.actualCapacity)} />
+                <Stat label="Sending days" value={fmt(r.totalSendDays)} />
+              </div>
+
+              <div style={{ background: "#11171d", border: "1px solid #28323d", borderRadius: 14, padding: 20, marginBottom: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                  <h2 style={{ fontSize: 16, margin: 0, fontWeight: 700 }}>Warmup ramp</h2>
+                  <span style={{ fontSize: 12, color: "#7f8896" }}>{r.weeks} week{r.weeks > 1 ? "s" : ""} per mailbox</span>
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-end", height: 110, marginBottom: 14 }}>
+                  {r.ramp.map((v, i) => {
+                    const h = (v / s.perMailboxPerDay) * 100;
+                    return (
+                      <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: "#f4a13b", fontWeight: 700 }}>{v}</div>
+                        <div style={{ width: "100%", height: `${h}%`, background: "linear-gradient(180deg,#f4a13b,#b9701c)", borderRadius: "5px 5px 0 0", minHeight: 6 }} />
+                        <div style={{ fontSize: 11, color: "#7f8896" }}>W{i + 1}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: 13, color: "#aab2bc", lineHeight: 1.6 }}>
+                  Each mailbox ramps from ~6/day to {s.perMailboxPerDay}/day over {r.weeks} week{r.weeks > 1 ? "s" : ""} (numbers = emails/day).
+                  Warmup runs <strong style={{ color: "#f4a13b" }}>before</strong> the campaign, so build and warm the infrastructure first.
+                  Earliest safe full-volume launch: <strong style={{ color: "#eef2f6" }}>
+                    {r.launchDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </strong>.
+                </div>
+              </div>
+
+              <div style={{ fontSize: 12, color: "#6f7783", lineHeight: 1.6 }}>
+                Total lead time = {r.weeks} weeks warmup + {fmt(r.totalSendDays)} sending days.
+                Capacity exceeds demand by {fmt(Math.max(0, r.actualCapacity - Math.ceil(r.dailyVolume)))}/day (rounding buffer).
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<ColdEmailCalculator />);
+    </script>
+  </body>
+</html>
