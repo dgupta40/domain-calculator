@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 
 // ---- Conservative defaults ----
 const DEFAULTS = {
+  day0: new Date().toISOString().slice(0, 10),
   leads: 10000,
   emailsPerSequence: 3,
   perMailboxPerDay: 30,
@@ -75,7 +76,10 @@ function Stat({ label, value, unit, big, accent }) {
 export default function ColdEmailCalculator() {
   const [s, setS] = useState(DEFAULTS);
   const set = (k) => (e) => {
-    const v = e.target.type === "checkbox" ? e.target.checked : Number(e.target.value);
+    const v =
+      e.target.type === "checkbox" ? e.target.checked
+      : e.target.type === "date"   ? e.target.value
+      : Number(e.target.value);
     setS((p) => ({ ...p, [k]: v }));
   };
 
@@ -100,12 +104,24 @@ export default function ColdEmailCalculator() {
     const warmupSendPerMailbox = ramp.reduce((sum, perDay) => sum + perDay * 5, 0);
 
     const totalSendDays = Math.ceil(sendingDays);
-    const calStart = new Date();
+    const calStart = s.day0 ? new Date(s.day0 + "T00:00:00") : new Date();
     const launchDate = new Date(calStart.getTime() + weeks * 7 * 86400000);
+
+    const addBusinessDays = (d, n) => {
+      const out = new Date(d);
+      let added = 0;
+      while (added < n) {
+        out.setDate(out.getDate() + 1);
+        const dow = out.getDay();
+        if (!s.weekdaysOnly || (dow !== 0 && dow !== 6)) added++;
+      }
+      return out;
+    };
+    const campaignEndDate = addBusinessDays(launchDate, totalSendDays);
 
     return {
       totalEmails, dailyVolume, mailboxes, domains, actualCapacity,
-      ramp, warmupSendPerMailbox, totalSendDays, weeks, launchDate,
+      ramp, warmupSendPerMailbox, totalSendDays, weeks, launchDate, campaignEndDate,
     };
   }, [s]);
 
@@ -133,6 +149,12 @@ export default function ColdEmailCalculator() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 22px" }}>
+          <Field label="Domain purchase date" hint="day 0">
+            <input style={inputStyle} type="date" value={s.day0} onChange={set("day0")} />
+          </Field>
+          <Field label="Warmup period" hint="weeks before launch">
+            <input style={inputStyle} type="number" min={0} value={s.warmupWeeks} onChange={set("warmupWeeks")} />
+          </Field>
           <Field label="Total leads">
             <input style={inputStyle} type="number" min={1} value={s.leads} onChange={set("leads")} />
           </Field>
@@ -147,9 +169,6 @@ export default function ColdEmailCalculator() {
           </Field>
           <Field label="Target window" hint="months">
             <input style={inputStyle} type="number" min={0.25} step={0.25} value={s.targetMonths} onChange={set("targetMonths")} />
-          </Field>
-          <Field label="Warmup period" hint="weeks before launch">
-            <input style={inputStyle} type="number" min={0} value={s.warmupWeeks} onChange={set("warmupWeeks")} />
           </Field>
         </div>
 
@@ -192,8 +211,10 @@ export default function ColdEmailCalculator() {
           <div style={{ fontSize: 13, color: "#aab2bc", lineHeight: 1.6 }}>
             Each mailbox ramps from ~6/day to {s.perMailboxPerDay}/day over {r.weeks} week{r.weeks > 1 ? "s" : ""} (numbers = emails/day).
             Warmup runs <strong style={{ color: "#f4a13b" }}>before</strong> the campaign, so build and warm the infrastructure first.
-            Earliest safe full-volume launch: <strong style={{ color: "#eef2f6" }}>
+            Mailboxes mature on: <strong style={{ color: "#eef2f6" }}>
               {r.launchDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+            </strong>. Campaign ends on: <strong style={{ color: "#eef2f6" }}>
+              {r.campaignEndDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
             </strong>.
           </div>
         </div>
